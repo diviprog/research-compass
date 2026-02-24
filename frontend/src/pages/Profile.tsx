@@ -371,7 +371,7 @@ export const Profile: React.FC = () => {
               <Button type="submit" disabled={saving} size="lg">
                 {saving ? 'Saving...' : 'Save profile'}
               </Button>
-              <Button as={Link} to="/dashboard" variant="secondary" size="lg">
+              <Button type="button" onClick={() => navigate('/dashboard')} variant="secondary" size="lg">
                 Back to Dashboard
               </Button>
             </div>
