@@ -17,6 +17,8 @@ from app.models.user import User
 
 # HTTP Bearer for token extraction
 security = HTTPBearer()
+# Optional Bearer (no 403 when header missing) for optional-auth endpoints
+optional_security = HTTPBearer(auto_error=False)
 
 # JWT Configuration
 ALGORITHM = "HS256"
@@ -218,6 +220,31 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
+    return user
+
+
+def get_optional_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """
+    Dependency that returns the current user if a valid Bearer token is present,
+    otherwise returns None. Use for endpoints where auth is optional.
+    """
+    if credentials is None:
+        return None
+    try:
+        token = credentials.credentials
+        payload = decode_token(token)
+        if payload.get("type") != "access":
+            return None
+        user_id_str = payload.get("sub")
+        if user_id_str is None:
+            return None
+        user_id = int(user_id_str)
+    except Exception:
+        return None
+    user = db.query(User).filter(User.user_id == user_id).first()
     return user
 
 

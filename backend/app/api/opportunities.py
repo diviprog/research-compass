@@ -11,7 +11,7 @@ from datetime import datetime
 from app.db.database import get_db
 from app.models.user import User
 from app.models.opportunity import Opportunity
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, get_optional_user
 from pydantic import BaseModel, Field
 
 
@@ -90,11 +90,11 @@ async def list_opportunities(
     institution: Optional[str] = Query(None, description="Filter by institution"),
     funding_status: Optional[str] = Query(None, description="Filter by funding status"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
     Get a list of research opportunities with optional filtering.
-    Requires authentication.
+    Authentication is optional.
     """
     query = db.query(Opportunity)
     
