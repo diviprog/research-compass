@@ -74,9 +74,10 @@ def get_db() -> Generator[Session, None, None]:
 def init_db() -> None:
     """
     Initialize database by creating all tables.
-    
-    Imports only SQLite-compatible models (no pgvector Vector / ARRAY).
-    For PostgreSQL + embeddings, run: alembic upgrade head
+
+    Core tables (User, Opportunity, Match, Outreach, RefreshToken) are always created.
+    On PostgreSQL, embedding tables (user_embeddings, opportunity_embeddings) are
+    created only if pgvector is available; otherwise a warning is logged and startup continues.
     """
     from app.db.base import Base
     from app.models.user import User
@@ -85,8 +86,32 @@ def init_db() -> None:
     from app.models.outreach import Outreach
     from app.models.refresh_token import RefreshToken
 
-    Base.metadata.create_all(bind=engine)
-    print(f"✓ Database initialized")
+    # Core tables only (no pgvector Vector types)
+    core_tables = [
+        User.__table__,
+        Opportunity.__table__,
+        Match.__table__,
+        Outreach.__table__,
+        RefreshToken.__table__,
+    ]
+    Base.metadata.create_all(bind=engine, tables=core_tables)
+    print("✓ Database initialized (core tables)")
+
+    # On PostgreSQL, try to create embedding tables (require pgvector extension)
+    if engine.dialect.name == "postgresql":
+        try:
+            from app.models.user_embedding import UserEmbedding
+            from app.models.opportunity_embedding import OpportunityEmbedding
+            Base.metadata.create_all(
+                bind=engine,
+                tables=[UserEmbedding.__table__, OpportunityEmbedding.__table__],
+            )
+            print("✓ Embedding tables (user_embeddings, opportunity_embeddings) created")
+        except Exception as e:
+            print(
+                "⚠ Embedding tables skipped (pgvector may not be installed or enabled):",
+                str(e),
+            )
 
 
 def reset_db() -> None:
