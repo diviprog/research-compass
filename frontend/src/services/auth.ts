@@ -3,8 +3,7 @@
  */
 
 import axios, { AxiosError } from 'axios';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+import { API_BASE_URL } from '../lib/apiBase';
 
 export interface SignUpData {
   email: string;
@@ -89,12 +88,15 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor: add auth token; for FormData, drop Content-Type so browser sets multipart boundary
 api.interceptors.request.use(
   (config) => {
     const token = TokenStorage.getAccessToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+    }
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
     }
     return config;
   },

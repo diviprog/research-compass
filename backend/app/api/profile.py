@@ -82,53 +82,49 @@ async def upload_and_parse_resume(
         )
 
     # Parse resume - gracefully handle partial failures
+    empty_parsed = {
+        "skills": [],
+        "education": {"university": None, "major": None, "graduation_year": None},
+        "research_summary": None,
+        "raw_text": "",
+    }
     try:
         parsed_data = parse_resume(str(file_path))
 
-        # Update user's resume_file_path in database
+        # Update user's resume_file_path
         current_user.resume_file_path = str(file_path)
+
+        # PATCH-style auto-update profile: only overwrite where parsed value is non-null
+        if parsed_data.get("research_summary"):
+            current_user.research_interests = parsed_data["research_summary"]
+        education = parsed_data.get("education") or {}
+        if education.get("university") is not None:
+            current_user.university = education["university"]
+        if education.get("major") is not None:
+            current_user.major = education["major"]
+        if education.get("graduation_year") is not None:
+            current_user.graduation_year = education["graduation_year"]
+
         db.commit()
 
-        # Count what was successfully parsed
-        parsed_fields = []
-        if parsed_data.get("skills"): parsed_fields.append("skills")
-        if parsed_data.get("past_experiences"): parsed_fields.append("experiences")
-        if parsed_data.get("university"): parsed_fields.append("education")
-        if parsed_data.get("email"): parsed_fields.append("contact info")
-
-        # Return parsed data for user review
         return {
-            "message": "Resume uploaded successfully" + (f" - Auto-detected: {', '.join(parsed_fields)}" if parsed_fields else " - Please review and fill in details manually"),
+            "message": "Resume uploaded and profile updated",
             "file_path": str(file_path),
             "parsed_data": parsed_data,
-            "parsing_status": "partial" if len(parsed_fields) < 3 else "success",
-            "note": "Please review the parsed information and add/edit as needed before submitting your profile."
+            "parsing_status": "success" if parsed_data.get("research_summary") else "partial",
+            "note": "Profile auto-updated with research summary and education where available. Review on Profile page and Save if needed.",
         }
 
     except Exception as e:
-        # Even if parsing fails completely, keep the file but return empty structure
-        # This allows manual entry while preserving the uploaded resume
         current_user.resume_file_path = str(file_path)
         db.commit()
-
         return {
-            "message": "Resume uploaded but automatic parsing had issues - please fill in your information manually",
+            "message": "Resume uploaded but parsing had issues - please fill in your information manually",
             "file_path": str(file_path),
-            "parsed_data": {
-                "email": None,
-                "phone": None,
-                "university": None,
-                "major": None,
-                "gpa": None,
-                "graduation_year": None,
-                "skills": [],
-                "past_experiences": [],
-                "publications": [],
-                "resume_text": ""
-            },
+            "parsed_data": empty_parsed,
             "parsing_status": "failed",
             "error": str(e),
-            "note": "Don't worry! You can manually enter your information. Your resume is saved for reference."
+            "note": "Your resume is saved. You can enter your information manually on the Profile page.",
         }
 
 
@@ -170,7 +166,7 @@ async def create_or_update_profile(
     current_user.research_interests = profile_data.research_interests
     current_user.preferred_methods = profile_data.preferred_methods
     current_user.preferred_datasets = profile_data.preferred_datasets
-    current_user.experience_level = profile_data.experience_level
+    current_user.degree_level = profile_data.experience_level or "undergraduate"
     current_user.location_preferences = profile_data.location_preferences
     current_user.availability = profile_data.availability
 
@@ -194,7 +190,7 @@ async def create_or_update_profile(
         research_interests=current_user.research_interests,
         preferred_methods=current_user.preferred_methods or [],
         preferred_datasets=current_user.preferred_datasets or [],
-        experience_level=current_user.experience_level,
+        experience_level=current_user.degree_level or "undergraduate",
         location_preferences=current_user.location_preferences or [],
         availability=current_user.availability,
         created_at=current_user.created_at.isoformat(),
@@ -228,6 +224,9 @@ async def update_profile(
     update_data = profile_data.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():
+        # Map API field name to User model column name
+        if field == "experience_level":
+            field = "degree_level"
         # Convert Experience and Publication lists to dictionaries if present
         if field == "past_experiences" and value is not None:
             value = [exp.model_dump() for exp in value]
@@ -256,7 +255,7 @@ async def update_profile(
         research_interests=current_user.research_interests,
         preferred_methods=current_user.preferred_methods or [],
         preferred_datasets=current_user.preferred_datasets or [],
-        experience_level=current_user.experience_level,
+        experience_level=current_user.degree_level or "undergraduate",
         location_preferences=current_user.location_preferences or [],
         availability=current_user.availability,
         created_at=current_user.created_at.isoformat(),
@@ -295,7 +294,7 @@ async def get_profile(
         research_interests=current_user.research_interests,
         preferred_methods=current_user.preferred_methods or [],
         preferred_datasets=current_user.preferred_datasets or [],
-        experience_level=current_user.experience_level,
+        experience_level=current_user.degree_level or "undergraduate",
         location_preferences=current_user.location_preferences or [],
         availability=current_user.availability,
         created_at=current_user.created_at.isoformat(),
@@ -346,7 +345,7 @@ async def get_user_profile(
         research_interests=user.research_interests,
         preferred_methods=user.preferred_methods or [],
         preferred_datasets=user.preferred_datasets or [],
-        experience_level=user.experience_level,
+        experience_level=user.degree_level or "undergraduate",
         location_preferences=user.location_preferences or [],
         availability=user.availability,
         created_at=user.created_at.isoformat(),

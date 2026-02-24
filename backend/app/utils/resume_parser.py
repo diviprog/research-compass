@@ -1,13 +1,21 @@
 """
 Resume parser utility for extracting structured data from PDF resumes.
-Uses pdfplumber for text extraction and regex patterns for data extraction.
+Uses pdfplumber for text extraction, regex for data extraction, and OpenAI GPT-4o for research summary.
 """
 
+import os
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from dateutil import parser as date_parser
 import pdfplumber
+
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
+
+RESEARCH_SUMMARY_PROMPT = """Given this resume, write a 4-5 sentence research background summary for a student applying to academic research positions. Focus on: what research/technical projects they have worked on, what methods and models they used, what their findings were, and what research areas they are clearly interested in. Be specific — mention actual project names, techniques, and domains. Write in first person. Do not list skills — synthesize the experience into a narrative."""
 
 
 class ResumeParser:
@@ -236,41 +244,58 @@ class ResumeParser:
             "graduation_year": grad_year
         }
 
-    def parse(self) -> Dict:
+    def _generate_research_summary(self) -> Optional[str]:
+        """Generate a research background summary from full resume text using OpenAI GPT-4o."""
+        if not self.text or len(self.text.strip()) < 50:
+            return None
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key or OpenAI is None:
+            return None
+        try:
+            client = OpenAI(api_key=api_key)
+            # Truncate if very long to stay within context limits
+            text = self.text[:12000].strip()
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[
+                    {"role": "system", "content": RESEARCH_SUMMARY_PROMPT},
+                    {"role": "user", "content": text},
+                ],
+                max_tokens=500,
+            )
+            if response.choices and response.choices[0].message.content:
+                return response.choices[0].message.content.strip()
+        except Exception:
+            pass
+        return None
+
+    def parse(self) -> Dict[str, Any]:
         """
         Parse the entire resume and return structured data.
 
         Returns:
-            Dictionary with parsed resume data including:
-            - email, phone
-            - education (university, major, gpa, graduation_year)
-            - skills (list)
-            - experiences (list of dicts)
-            - raw_text (full text)
+            Dictionary with:
+            - skills: list of extracted skill keywords
+            - education: { university, major, graduation_year } from education section
+            - research_summary: 4-5 sentence narrative from GPT-4o (or None if no API key/failure)
+            - raw_text: full extracted resume text
         """
-        # Extract text
         self.extract_text()
-
-        # Identify sections
         self.identify_sections()
-
-        # Extract all components
         education = self.extract_education()
+        skills = self.extract_skills()
+        research_summary = self._generate_research_summary()
 
-        parsed_data = {
-            "email": self.extract_email(),
-            "phone": self.extract_phone(),
-            "university": education.get("university"),
-            "major": education.get("major"),
-            "gpa": education.get("gpa"),
-            "graduation_year": education.get("graduation_year"),
-            "skills": self.extract_skills(),
-            "past_experiences": self.extract_experiences(),
-            "publications": [],  # Could be enhanced to extract publications
-            "resume_text": self.text[:5000],  # First 5000 chars as summary
+        return {
+            "skills": skills,
+            "education": {
+                "university": education.get("university"),
+                "major": education.get("major"),
+                "graduation_year": education.get("graduation_year"),
+            },
+            "research_summary": research_summary,
+            "raw_text": self.text,
         }
-
-        return parsed_data
 
 
 def parse_resume(pdf_path: str) -> Dict:

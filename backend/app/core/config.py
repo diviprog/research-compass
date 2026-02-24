@@ -34,7 +34,8 @@ class Settings(BaseSettings):
     # Bright Data
     BRIGHT_DATA_API_KEY: Optional[str] = None
     
-    # CORS
+    # CORS (FRONTEND_URL for production; default for local dev)
+    FRONTEND_URL: Optional[str] = "http://localhost:5173"
     CORS_ORIGINS: list = [
         "http://localhost:3000",
         "http://localhost:5173",
@@ -42,7 +43,15 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174"
     ]
-    
+
+    @property
+    def cors_origins_list(self) -> list:
+        """Allowed CORS origins: hardcoded localhost list + FRONTEND_URL if set and not already included."""
+        origins = list(self.CORS_ORIGINS)
+        if self.FRONTEND_URL and self.FRONTEND_URL.rstrip("/") not in [o.rstrip("/") for o in origins]:
+            origins.append(self.FRONTEND_URL.rstrip("/"))
+        return origins
+
     class Config:
         env_file = ".env"
         case_sensitive = True

@@ -2,6 +2,9 @@
 Research Assistant API - Main FastAPI application.
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -38,7 +41,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
@@ -75,17 +78,16 @@ from app.api.opportunities import router as opportunities_router
 from app.api.profile import router as profile_router
 from app.api.embeddings import router as embeddings_router
 from app.api.search import router as search_router
+from app.api.outreach import router as outreach_router
+from app.api.scrape import router as scrape_router
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(opportunities_router, prefix="/api")
 app.include_router(profile_router, prefix="/api")
 app.include_router(embeddings_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
-
-# Future routers (will add these next)
-# from app.api import matches, outreach
-# app.include_router(matches.router, prefix="/api", tags=["matches"])
-# app.include_router(outreach.router, prefix="/api", tags=["outreach"])
+app.include_router(outreach_router, prefix="/api")
+app.include_router(scrape_router, prefix="/api")
 
 
 if __name__ == "__main__":

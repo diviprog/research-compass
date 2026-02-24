@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Boolean, ARRAY
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.db.base import Base
@@ -43,7 +43,7 @@ class Opportunity(Base):
     location_city = Column(String(100), nullable=True, comment="City where position is located")
     location_state = Column(String(2), nullable=True, index=True, comment="State code (e.g., 'CA', 'NY')")
     is_remote = Column(Boolean, default=False, nullable=False, comment="Can be done remotely")
-    degree_levels = Column(ARRAY(String), nullable=True, comment="Accepted degree levels: ['undergraduate', 'masters', 'phd']")
+    degree_levels = Column(JSON, nullable=True, comment="Accepted degree levels: ['undergraduate', 'masters', 'phd']")
     min_hours = Column(Integer, nullable=True, comment="Minimum hours per week expected")
     max_hours = Column(Integer, nullable=True, comment="Maximum hours per week allowed")
     paid_type = Column(String(50), nullable=True, comment="Type of compensation: 'stipend', 'hourly', 'unpaid', 'credit'")

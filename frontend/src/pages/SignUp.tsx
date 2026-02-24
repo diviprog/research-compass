@@ -6,6 +6,8 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { AxiosError } from 'axios';
+import { formatApiErrorDetail } from '../utils/apiError';
+import { API_BASE_URL } from '../lib/apiBase';
 
 interface FormErrors {
   name?: string;
@@ -100,10 +102,14 @@ export const SignUp: React.FC = () => {
       // Redirect to dashboard on success
       navigate('/dashboard');
     } catch (error) {
-      const axiosError = error as AxiosError<{ detail: string }>;
-      setErrors({
-        submit: axiosError.response?.data?.detail || 'Sign up failed. Please try again.'
-      });
+      const axiosError = error as AxiosError<{ detail?: unknown }>;
+      const message =
+        axiosError.response?.data != null
+          ? formatApiErrorDetail(axiosError.response.data)
+          : axiosError.code === 'ERR_NETWORK'
+            ? 'Cannot reach server. Is the backend running at ' + API_BASE_URL + '?'
+            : 'Sign up failed. Please try again.';
+      setErrors({ submit: message });
     } finally {
       setIsLoading(false);
     }

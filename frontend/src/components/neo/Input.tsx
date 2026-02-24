@@ -31,7 +31,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
   ) => {
     const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`;
     
-    const baseStyles = 'block w-full rounded-lg border transition-all duration-150 ease-campus-snap focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed';
+    const baseStyles = 'block w-full rounded-lg border bg-white text-gray-900 placeholder-gray-500 transition-all duration-150 ease-campus-snap focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed';
     
     const stateStyles = error
       ? 'border-coral-400 focus:border-coral-500 focus:ring-coral-500'

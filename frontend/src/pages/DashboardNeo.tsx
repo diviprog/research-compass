@@ -5,24 +5,104 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { OpportunitiesService } from '../services/opportunities';
 import type { Opportunity } from '../services/opportunities';
+import { ProfileService } from '../services/profile';
 import { AxiosError } from 'axios';
+import api from '../services/auth';
 import { Card, Button, Badge, Input, Modal } from '../components/neo';
+import { API_BASE_URL } from '../lib/apiBase';
+
+/** Semantic search result item (no auth required). */
+export interface SearchResultItem {
+  opportunity_id: number;
+  title: string;
+  description: string;
+  lab_name: string | null;
+  pi_name: string | null;
+  institution: string | null;
+  location_city?: string | null;
+  location_state?: string | null;
+  is_remote?: boolean;
+  degree_levels?: string[];
+  paid_type?: string | null;
+  min_hours?: number | null;
+  max_hours?: number | null;
+  research_topics: string[];
+  deadline: string | null;
+  application_link: string | null;
+  contact_email: string | null;
+  similarity_score: number;
+  /** Present when from GET /opportunities, not from search */
+  funding_status?: string | null;
+  source_url?: string | null;
+  methods?: string[];
+  experience_required?: string | null;
+}
+
+/** Item we can display in the list (GET list or search results). */
+type DisplayOpportunity = Opportunity | SearchResultItem;
+
+function hasSimilarityScore(opp: DisplayOpportunity): opp is SearchResultItem {
+  return 'similarity_score' in opp && typeof (opp as SearchResultItem).similarity_score === 'number';
+}
 
 export const DashboardNeo: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResultItem[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
+  const [selectedOpportunity, setSelectedOpportunity] = useState<DisplayOpportunity | null>(null);
+  const [emailGenerating, setEmailGenerating] = useState(false);
+  const [isCuratedFromProfile, setIsCuratedFromProfile] = useState(false);
+  const [showProfileBanner, setShowProfileBanner] = useState(false);
 
   useEffect(() => {
-    fetchOpportunities();
+    const loadDashboard = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const profile = await ProfileService.getProfile();
+        const interests = (profile.research_interests || '').trim();
+        if (interests.length >= 10) {
+          const res = await fetch(`${API_BASE_URL}/api/opportunities/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: interests, limit: 10 }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setSearchResults(data.results || []);
+            setOpportunities([]);
+            setIsCuratedFromProfile(true);
+            setShowProfileBanner(false);
+          } else {
+            const data = await res.json().catch(() => ({}));
+            setError(data.detail || 'Search failed.');
+            await fetchOpportunities();
+            setShowProfileBanner(true);
+          }
+        } else {
+          await fetchOpportunities();
+          setSearchResults(null);
+          setShowProfileBanner(true);
+          setIsCuratedFromProfile(false);
+        }
+      } catch {
+        await fetchOpportunities();
+        setSearchResults(null);
+        setShowProfileBanner(true);
+        setIsCuratedFromProfile(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDashboard();
   }, []);
 
   const fetchOpportunities = async () => {
@@ -50,18 +130,37 @@ export const DashboardNeo: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResults(null);
+      fetchOpportunities();
+      setIsCuratedFromProfile(false);
+      return;
+    }
+    if (query.length < 10) {
+      setError('Enter at least 10 characters for semantic search.');
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      const data = await OpportunitiesService.getOpportunities({
-        is_active: true,
-        search: searchQuery,
-        limit: 100
+      setIsCuratedFromProfile(false);
+      const res = await fetch(`${API_BASE_URL}/api/opportunities/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, limit: 10 }),
       });
-      setOpportunities(data);
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.detail || 'Semantic search failed.');
+        setSearchResults(null);
+        return;
+      }
+      const data = await res.json();
+      setSearchResults(data.results || []);
     } catch (err) {
-      const axiosError = err as AxiosError<{ detail: string }>;
-      setError(axiosError.response?.data?.detail || 'Failed to search opportunities');
+      setError('Semantic search failed. Please try again.');
+      setSearchResults(null);
     } finally {
       setLoading(false);
     }
@@ -81,6 +180,33 @@ export const DashboardNeo: React.FC = () => {
     return daysUntil <= 7 && daysUntil >= 0;
   };
 
+  const handleGenerateEmail = async () => {
+    if (!selectedOpportunity) return;
+    try {
+      setEmailGenerating(true);
+      const { data } = await api.post<{ subject: string; body: string; opportunity_id: number; outreach_id: number }>(
+        '/outreach/generate',
+        { opportunity_id: selectedOpportunity.opportunity_id }
+      );
+      navigate('/outreach', {
+        state: {
+          subject: data.subject,
+          body: data.body,
+          opportunity_id: data.opportunity_id,
+          outreach_id: data.outreach_id,
+          opportunity_title: selectedOpportunity.title,
+          pi_name: selectedOpportunity.pi_name ?? null,
+          institution: selectedOpportunity.institution ?? null,
+        },
+      });
+    } catch (err) {
+      const axiosError = err as AxiosError<{ detail?: string }>;
+      setError(axiosError.response?.data?.detail || 'Failed to generate email.');
+    } finally {
+      setEmailGenerating(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 font-body">
       {/* Navigation */}
@@ -96,6 +222,12 @@ export const DashboardNeo: React.FC = () => {
               <h1 className="text-xl font-bold font-display text-gray-900">Research Assistant</h1>
             </div>
             <div className="flex items-center gap-4">
+              <Link
+                to="/profile"
+                className="text-sm font-medium text-gray-600 hover:text-gray-900"
+              >
+                Profile
+              </Link>
               <span className="text-sm text-gray-600 hidden sm:inline">
                 Welcome, <span className="font-semibold text-gray-900">{user?.name}</span>
               </span>
@@ -118,14 +250,14 @@ export const DashboardNeo: React.FC = () => {
           </p>
         </div>
 
-        {/* Search Section */}
+        {/* Search Section — semantic search */}
         <div className="mb-8 animate-slide-up" style={{ animationDelay: '50ms' }}>
           <form onSubmit={handleSearch} className="flex gap-3">
             <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by title, lab, PI name, or topics..."
+              placeholder="Describe your research interests... (e.g. 'machine learning for healthcare')"
               fullWidth
               leftIcon={
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -141,6 +273,7 @@ export const DashboardNeo: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setSearchQuery('');
+                  setSearchResults(null);
                   fetchOpportunities();
                 }}
                 variant="ghost"
@@ -151,6 +284,15 @@ export const DashboardNeo: React.FC = () => {
             )}
           </form>
         </div>
+
+        {/* Banner: no research interests — prompt to upload resume */}
+        {showProfileBanner && !loading && searchResults === null && opportunities.length > 0 && (
+          <Card variant="outlined" className="mb-6 border-campus-200 bg-campus-50 animate-slide-up">
+            <p className="text-sm text-campus-900">
+              Upload your resume on the <Link to="/profile" className="font-semibold underline">Profile</Link> page to get personalized results.
+            </p>
+          </Card>
+        )}
 
         {/* Error State */}
         {error && (
@@ -200,7 +342,7 @@ export const DashboardNeo: React.FC = () => {
         )}
 
         {/* Empty State */}
-        {!loading && opportunities.length === 0 && (
+        {!loading && (searchResults ?? opportunities).length === 0 && (
           <Card className="text-center py-12 animate-scale-in">
             <div className="flex flex-col items-center">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -217,16 +359,23 @@ export const DashboardNeo: React.FC = () => {
         )}
 
         {/* Opportunities Grid */}
-        {!loading && opportunities.length > 0 && (
+        {!loading && (searchResults ?? opportunities).length > 0 && (() => {
+          const listToShow: DisplayOpportunity[] = searchResults ?? opportunities;
+          return (
           <>
             <div className="mb-4">
+              {isCuratedFromProfile && (
+                <p className="text-xs text-gray-500 font-medium mb-1">Curated for your profile</p>
+              )}
               <p className="text-sm text-gray-600 font-medium">
-                {opportunities.length} {opportunities.length === 1 ? 'opportunity' : 'opportunities'} found
+                {listToShow.length} {listToShow.length === 1 ? 'opportunity' : 'opportunities'} found
+                {searchResults !== null && !isCuratedFromProfile && ' (semantic search)'}
+                {searchResults !== null && isCuratedFromProfile && ' (curated)'}
               </p>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-1">
-              {opportunities.map((opp, index) => (
+              {listToShow.map((opp, index) => (
                 <Card
                   key={opp.opportunity_id}
                   variant="interactive"
@@ -258,11 +407,18 @@ export const DashboardNeo: React.FC = () => {
                         )}
                       </div>
                     </div>
-                    {opp.deadline && isDeadlineSoon(opp.deadline) && (
-                      <Badge variant="danger" size="md" className="flex-shrink-0 ml-4 animate-float">
-                        Deadline Soon
-                      </Badge>
-                    )}
+                    <div className="flex flex-shrink-0 ml-4 items-center gap-2">
+                      {hasSimilarityScore(opp) && (
+                        <Badge variant="primary" size="md">
+                          {Math.round(opp.similarity_score * 100)}% match
+                        </Badge>
+                      )}
+                      {opp.deadline && isDeadlineSoon(opp.deadline) && (
+                        <Badge variant="danger" size="md" className="animate-float">
+                          Deadline Soon
+                        </Badge>
+                      )}
+                    </div>
                   </div>
 
                   {/* Description */}
@@ -322,7 +478,8 @@ export const DashboardNeo: React.FC = () => {
               ))}
             </div>
           </>
-        )}
+          );
+        })()}
       </main>
 
       {/* Opportunity Detail Modal */}
@@ -442,7 +599,7 @@ export const DashboardNeo: React.FC = () => {
               )}
               <Button
                 as="a"
-                href={selectedOpportunity.source_url}
+                href={('source_url' in selectedOpportunity ? selectedOpportunity.source_url : null) ?? selectedOpportunity.application_link ?? '#'}
                 target="_blank"
                 rel="noopener noreferrer"
                 variant="secondary"
@@ -455,6 +612,20 @@ export const DashboardNeo: React.FC = () => {
                 }
               >
                 View Source
+              </Button>
+            </div>
+
+            {/* Generate Email */}
+            <div className="pt-6 border-t border-gray-100">
+              <Button
+                type="button"
+                onClick={handleGenerateEmail}
+                disabled={emailGenerating}
+                variant="secondary"
+                size="lg"
+                fullWidth
+              >
+                {emailGenerating ? 'Generating...' : 'Generate Email'}
               </Button>
             </div>
           </div>

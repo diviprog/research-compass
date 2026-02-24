@@ -75,11 +75,16 @@ def init_db() -> None:
     """
     Initialize database by creating all tables.
     
-    This function should be called once at application startup.
+    Imports only SQLite-compatible models (no pgvector Vector / ARRAY).
+    For PostgreSQL + embeddings, run: alembic upgrade head
     """
     from app.db.base import Base
-    from app.models import User, Opportunity, Match, Outreach  # Import all models
-    
+    from app.models.user import User
+    from app.models.opportunity import Opportunity
+    from app.models.match import Match
+    from app.models.outreach import Outreach
+    from app.models.refresh_token import RefreshToken
+
     Base.metadata.create_all(bind=engine)
     print(f"✓ Database initialized")
 

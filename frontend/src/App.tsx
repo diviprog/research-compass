@@ -8,6 +8,8 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import SignUp from './pages/SignUp';
 import SignIn from './pages/SignIn';
 import Dashboard from './pages/DashboardNeo';
+import Profile from './pages/Profile';
+import OutreachEmail from './pages/OutreachEmail';
 
 function App() {
   return (
@@ -24,6 +26,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/outreach"
+            element={
+              <ProtectedRoute>
+                <OutreachEmail />
               </ProtectedRoute>
             }
           />
