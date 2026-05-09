@@ -3,7 +3,7 @@ API endpoints for research opportunities.
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 from datetime import datetime
@@ -16,6 +16,18 @@ from pydantic import BaseModel, Field
 
 
 router = APIRouter(prefix="/opportunities", tags=["opportunities"])
+
+
+def _trigger_opportunity_embedding(opportunity_id: int) -> None:
+    from app.db.database import SessionLocal
+    from app.services.embeddings import EmbeddingService
+    db = SessionLocal()
+    try:
+        EmbeddingService().generate_opportunity_embedding(opportunity_id, db)
+    except Exception:
+        pass
+    finally:
+        db.close()
 
 
 # Pydantic schemas for request/response
@@ -191,6 +203,7 @@ async def get_opportunity(
 @router.post("/", response_model=OpportunityResponse, status_code=status.HTTP_201_CREATED)
 async def create_opportunity(
     opportunity_data: OpportunityCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -231,7 +244,9 @@ async def create_opportunity(
     db.add(new_opportunity)
     db.commit()
     db.refresh(new_opportunity)
-    
+
+    background_tasks.add_task(_trigger_opportunity_embedding, new_opportunity.opportunity_id)
+
     return OpportunityResponse(
         opportunity_id=new_opportunity.opportunity_id,
         source_url=new_opportunity.source_url,
@@ -258,6 +273,7 @@ async def create_opportunity(
 async def update_opportunity(
     opportunity_id: int,
     opportunity_data: OpportunityUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -282,7 +298,9 @@ async def update_opportunity(
     
     db.commit()
     db.refresh(opportunity)
-    
+
+    background_tasks.add_task(_trigger_opportunity_embedding, opportunity.opportunity_id)
+
     return OpportunityResponse(
         opportunity_id=opportunity.opportunity_id,
         source_url=opportunity.source_url,

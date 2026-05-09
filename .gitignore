@@ -44,3 +44,7 @@ node_modules/
 .taskmaster/
 .cursor/
 venv/
+
+# Claude Code
+CLAUDE.md
+IMPLEMENTATION_STATUS.md

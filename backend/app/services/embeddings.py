@@ -22,6 +22,13 @@ from app.models.opportunity_embedding import OpportunityEmbedding
 class EmbeddingService:
     """Service for generating and managing embeddings."""
     
+    # text-embedding-3-large: MTEB retrieval score ~64.6. Chosen because it uses
+    # Matryoshka Representation Learning — dimensions can be truncated from 3072 to 256
+    # with minimal quality loss, keeping storage lean without a model swap.
+    # Higher-performing alternatives on MTEB retrieval benchmarks (if re-embedding is acceptable):
+    #   - Voyage AI voyage-3-large (~70.3 MTEB retrieval)
+    #   - Google Gemini Embedding 2 (comparable or better on retrieval tasks)
+    # Switching requires re-embedding the full corpus and updating EMBEDDING_DIMENSION.
     MODEL_NAME = "text-embedding-3-large"  # 3072 dimensions (default)
     EMBEDDING_DIMENSION = 3072
     

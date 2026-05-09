@@ -6,7 +6,7 @@ import os
 import shutil
 from pathlib import Path
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -16,6 +16,19 @@ from app.core.auth import get_current_user
 from app.utils.resume_parser import parse_resume
 
 router = APIRouter(prefix="/profile", tags=["Profile"])
+
+
+def _trigger_user_embedding(user_id: int) -> None:
+    from app.db.database import SessionLocal
+    from app.services.embeddings import EmbeddingService
+    db = SessionLocal()
+    try:
+        EmbeddingService().generate_user_embedding(user_id, db)
+    except Exception:
+        pass
+    finally:
+        db.close()
+
 
 # Configure upload directory
 UPLOAD_DIR = Path("uploads/resumes")
@@ -131,6 +144,7 @@ async def upload_and_parse_resume(
 @router.post("/", response_model=ProfileResponse, status_code=status.HTTP_200_OK)
 async def create_or_update_profile(
     profile_data: ProfileCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -173,6 +187,9 @@ async def create_or_update_profile(
     db.commit()
     db.refresh(current_user)
 
+    if current_user.research_interests:
+        background_tasks.add_task(_trigger_user_embedding, current_user.user_id)
+
     # Return the updated profile
     return ProfileResponse(
         user_id=current_user.user_id,
@@ -201,6 +218,7 @@ async def create_or_update_profile(
 @router.patch("/", response_model=ProfileResponse)
 async def update_profile(
     profile_data: ProfileUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -237,6 +255,9 @@ async def update_profile(
 
     db.commit()
     db.refresh(current_user)
+
+    if "research_interests" in update_data:
+        background_tasks.add_task(_trigger_user_embedding, current_user.user_id)
 
     # Return the updated profile
     return ProfileResponse(
